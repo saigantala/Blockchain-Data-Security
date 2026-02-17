@@ -27,9 +27,8 @@ import {
 import { toast } from 'react-hot-toast';
 import { ethers } from 'ethers';
 import {
-  DATA_VAULT_ADDRESS,
+  getAddresses,
   DATA_VAULT_ABI,
-  SMART_WALLET_ADDRESS,
   SMART_WALLET_ABI
 } from '@/lib/constants';
 import {
@@ -46,7 +45,9 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export default function Dashboard() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chain } = useAccount();
+  const addresses = getAddresses(chain?.id);
+
   const [logs, setLogs] = useState<{ msg: string; type: string; time: string }[]>([]);
   const [secretData, setSecretData] = useState("");
   const [integrityStatus, setIntegrityStatus] = useState<"VERIFIED" | "TAMPERED" | "UNKNOWN">("UNKNOWN");
@@ -65,14 +66,14 @@ export default function Dashboard() {
 
   // Contract Reads
   const { data: vaultOwner } = useReadContract({
-    address: DATA_VAULT_ADDRESS,
+    address: addresses.DATA_VAULT as `0x${string}`,
     abi: DATA_VAULT_ABI,
     functionName: 'owner',
   });
 
   // Watch for Security Alerts
   useWatchContractEvent({
-    address: DATA_VAULT_ADDRESS,
+    address: addresses.DATA_VAULT as `0x${string}`,
     abi: DATA_VAULT_ABI,
     eventName: 'SecurityAlert',
     onLogs(logs) {
@@ -109,7 +110,7 @@ export default function Dashboard() {
 
       addLog("Submitting Anchoring Transaction...", "info");
       const tx = await writeContractAsync({
-        address: DATA_VAULT_ADDRESS,
+        address: addresses.DATA_VAULT as `0x${string}`,
         abi: DATA_VAULT_ABI,
         functionName: 'uploadData',
         args: [encryptedData, encryptedSymKey, checksum],
@@ -135,7 +136,7 @@ export default function Dashboard() {
 
       try {
         const result = await publicClient.readContract({
-          address: DATA_VAULT_ADDRESS,
+          address: addresses.DATA_VAULT as `0x${string}`,
           abi: DATA_VAULT_ABI,
           functionName: 'accessData',
           account: address,
@@ -200,7 +201,7 @@ export default function Dashboard() {
 
       addLog("Transmitting Authorization to Blockchain...", "info");
       await writeContractAsync({
-        address: DATA_VAULT_ADDRESS,
+        address: addresses.DATA_VAULT as `0x${string}`,
         abi: DATA_VAULT_ABI,
         functionName: 'grantAccess',
         args: [grantAddress, encryptedKey],
@@ -227,8 +228,8 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-4">
           <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-zinc-900 border border-zinc-800 rounded-full text-xs font-mono">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            Mainnet Simulation Active
+            <div className={cn("w-2 h-2 rounded-full animate-pulse", isConnected ? "bg-green-500" : "bg-red-500")}></div>
+            {chain?.name || "Disconnected"}
           </div>
           <ConnectButton accountStatus="address" showBalance={false} />
         </div>
@@ -431,9 +432,9 @@ export default function Dashboard() {
 
       {/* Footer Meta */}
       <footer className="h-10 border-t border-zinc-800 flex items-center justify-between px-6 bg-black text-[9px] font-mono text-zinc-600 uppercase tracking-widest leading-[40px]">
-        <div>Vault Address: {DATA_VAULT_ADDRESS.slice(0, 10)}...</div>
+        <div>Vault Address: {addresses.DATA_VAULT.slice(0, 10)}...</div>
         <div className="flex gap-4">
-          <span>Simulation Mode: Active</span>
+          <span>Network: {chain?.name || "UNKNOWN"}</span>
           <span>Integrity Guard: Enabled</span>
         </div>
       </footer>

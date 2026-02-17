@@ -1,5 +1,25 @@
-export const DATA_VAULT_ADDRESS = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9";
-export const SMART_WALLET_ADDRESS = "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9";
+export const CONTRACT_ADDRESSES: Record<number, { DATA_VAULT: string; SMART_WALLET: string }> = {
+    31337: { // Hardhat
+        DATA_VAULT: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+        SMART_WALLET: "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"
+    },
+    11155111: { // Sepolia
+        DATA_VAULT: "0xPLACEHOLDER_SEPOLIA_VAULT",
+        SMART_WALLET: "0xPLACEHOLDER_SEPOLIA_WALLET"
+    },
+    80002: { // Polygon Amoy
+        DATA_VAULT: "0xPLACEHOLDER_AMOY_VAULT",
+        SMART_WALLET: "0xPLACEHOLDER_AMOY_WALLET"
+    },
+    421614: { // Arbitrum Sepolia
+        DATA_VAULT: "0xPLACEHOLDER_ARBITRUM_VAULT",
+        SMART_WALLET: "0xPLACEHOLDER_ARBITRUM_WALLET"
+    }
+};
+
+export const getAddresses = (chainId?: number) => {
+    return CONTRACT_ADDRESSES[chainId || 31337] || CONTRACT_ADDRESSES[31337];
+};
 
 export const DATA_VAULT_ABI = [
     "error NotAuthorized()",
