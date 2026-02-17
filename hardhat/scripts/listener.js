@@ -33,7 +33,10 @@ async function main() {
 
     dataVault.on("SecurityAlert", (intruder, time) => {
         console.log("\x1b[31m%s\x1b[0m", `ALARM: WALLET ${intruder} TRIED TO STEAL DATA at timestamp ${time}`);
-        // Optional: Add Twilio/Email logic here
+    });
+
+    dataVault.on("DataUploaded", (hash) => {
+        console.log("\x1b[32m%s\x1b[0m", `INFO: NEW SECURE DATA ANCHORED BY OWNER. HASH: ${hash}`);
     });
 
     // Keep the script running

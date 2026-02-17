@@ -3,9 +3,12 @@ pragma solidity ^0.8.0;
 
 contract DataVault {
     mapping(address => bool) public authorizedUsers;
+    mapping(address => string) public userKeys; // Encrypted symmetric keys for users
     address public owner;
+    string private secretDataHash; // Encrypted IPFS hash
 
     event SecurityAlert(address indexed intruder, uint256 time);
+    event DataUploaded(string encryptedHash);
 
     constructor() {
         owner = msg.sender;
@@ -17,15 +20,22 @@ contract DataVault {
         _;
     }
 
-    function grantAccess(address user) external onlyOwner {
-        authorizedUsers[user] = true;
+    function uploadData(string calldata _encryptedHash, string calldata _ownerKey) external onlyOwner {
+        secretDataHash = _encryptedHash;
+        userKeys[msg.sender] = _ownerKey;
+        emit DataUploaded(_encryptedHash);
     }
 
-    function accessData() external returns (string memory) {
+    function grantAccess(address user, string calldata encryptedKey) external onlyOwner {
+        authorizedUsers[user] = true;
+        userKeys[user] = encryptedKey;
+    }
+
+    function accessData() external returns (string memory encryptedHash, string memory key) {
         if (!authorizedUsers[msg.sender]) {
             emit SecurityAlert(msg.sender, block.timestamp);
-            return "ACCESS DENIED: SECURITY ALERT TRIGGERED";
+            return ("ACCESS DENIED", "");
         }
-        return "IPFS_HASH_QmXyZ7...";
+        return (secretDataHash, userKeys[msg.sender]);
     }
 }

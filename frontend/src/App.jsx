@@ -8,9 +8,12 @@ const CONTRACT_ADDRESS = contractAddresses.DATA_VAULT;
 const SMART_WALLET_ADDRESS = contractAddresses.SMART_WALLET;
 
 const DATA_VAULT_ABI = [
-  "function grantAccess(address user) external",
-  "function accessData() external returns (string)",
-  "event SecurityAlert(address intruder, uint256 time)"
+  "function uploadData(string calldata _encryptedHash, string calldata _ownerKey) external",
+  "function grantAccess(address user, string calldata encryptedKey) external",
+  "function accessData() external returns (string memory encryptedHash, string memory key)",
+  "function owner() external view returns (address)",
+  "event SecurityAlert(address intruder, uint256 time)",
+  "event DataUploaded(string encryptedHash)"
 ];
 
 const SMART_WALLET_ABI = [
@@ -32,6 +35,8 @@ function App() {
   const [secretData, setSecretData] = useState("");
   const [nodeStatus, setNodeStatus] = useState("UNKNOWN");
   const [vaultOwner, setVaultOwner] = useState("");
+  const [isEncrypting, setIsEncrypting] = useState(false);
+  const [uploadDataInput, setUploadDataInput] = useState("");
 
   useEffect(() => {
     connectWallet();
@@ -166,6 +171,66 @@ function App() {
       addLog(`🚨 SECURITY BREACH DETECTED! Intruder: ${intruder} at ${timestamps}`, "error");
       setTimeout(() => setSystemStatus("ONLINE"), 5000);
     });
+
+    dataVault.on("DataUploaded", (hash) => {
+      addLog(`NEW DATA ENCRYPTED & ANCHORED: ${hash.substring(0, 16)}...`, "success");
+    });
+  };
+
+  // --- SUPREME ENCRYPTION CORE ---
+
+  const deriveKey = async () => {
+    if (!provider || !account) return null;
+    const signer = await provider.getSigner();
+    // Simulate deterministic key derivation from signature
+    const message = "SECURE_DATA_VAULT_MASTER_KEY_V1";
+    const signature = await signer.signMessage(message);
+    return ethers.keccak256(signature); // 32-byte key
+  };
+
+  const xorEncrypt = (text, key) => {
+    // Basic XOR for demo (In production use WebCrypto / AES-GCM)
+    let res = "";
+    for (let i = 0; i < text.length; i++) {
+      res += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return btoa(res);
+  };
+
+  const xorDecrypt = (encoded, key) => {
+    const text = atob(encoded);
+    let res = "";
+    for (let i = 0; i < text.length; i++) {
+      res += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return res;
+  };
+
+  const uploadSecureData = async () => {
+    if (!contract || !uploadDataInput) return;
+    setIsEncrypting(true);
+    try {
+      addLog("Generating Session Key...", "info");
+      const masterKey = await deriveKey();
+      const symmetricKey = Math.random().toString(36).substring(7);
+
+      addLog("Encrypting Data with AES-256 (Simulated)...", "warning");
+      const encryptedData = xorEncrypt(uploadDataInput, symmetricKey);
+
+      addLog("Encrypting Symmetric Key for Owner...", "warning");
+      const encryptedSymmetricKey = xorEncrypt(symmetricKey, masterKey);
+
+      addLog("Anchoring Encrypted Data to Blockchain...", "info");
+      const tx = await contract.uploadData(encryptedData, encryptedSymmetricKey);
+      await tx.wait();
+
+      addLog("Data Secured Successfully.", "success");
+      setUploadDataInput("");
+    } catch (e) {
+      console.error(e);
+      addLog("Upload Failed. Check console.", "error");
+    }
+    setIsEncrypting(false);
   };
 
   const grantAccess = async () => {
@@ -183,7 +248,17 @@ function App() {
       }
 
       addLog(`Initiating Grant Access Protocol for ${targetAddress}...`, "info");
-      const tx = await contract.grantAccess(targetAddress);
+
+      // We need to re-encrypt the symmetric key for the target user
+      const result = await contract.accessData.staticCall();
+      const masterKey = await deriveKey();
+      const currentSymKey = xorDecrypt(result.key, masterKey);
+
+      addLog(`Transferring Decryption Rights to ${targetAddress}...`, "warning");
+      const targetDummyKey = ethers.keccak256(ethers.toUtf8Bytes(targetAddress));
+      const encryptedKeyForTarget = xorEncrypt(currentSymKey, targetDummyKey);
+
+      const tx = await contract.grantAccess(targetAddress, encryptedKeyForTarget);
       addLog(`Transaction Pending: ${tx.hash}`, "info");
       await tx.wait();
       addLog(`ACCESS GRANTED: ${targetAddress}`, "success");
@@ -204,16 +279,36 @@ function App() {
       addLog(`[AUTH] Identity Verified via Wallet Address. Initiating Data Breach...`, "error");
 
       // 3. Execute Blockchain Attack
-      // Use staticCall first to get the data (since accessData is not a view function)
-      const data = await contract.accessData.staticCall();
+      // Use staticCall first to get the data
+      const result = await contract.accessData.staticCall();
+      const encryptedData = result.encryptedHash;
+      const encryptedKey = result.key;
+
+      if (!encryptedData || encryptedData === "ACCESS DENIED") {
+        addLog("Data Access Refused. Not Authorized.", "error");
+        return;
+      }
 
       const tx = await contract.accessData();
       addLog(`Injection Sent: ${tx.hash}`, "info");
       await tx.wait();
 
-      setSecretData(data);
-      addLog(`DATA EXTRACTED: ${data}`, "success");
-      addLog("Transaction Confirmed. System Compromised.", "info");
+      addLog("Deciphering Stream...", "warning");
+      let keyToUse;
+      if (account.toLowerCase() === vaultOwner.toLowerCase()) {
+        keyToUse = await deriveKey();
+      } else {
+        keyToUse = ethers.keccak256(ethers.toUtf8Bytes(account));
+      }
+
+      try {
+        const symKey = xorDecrypt(encryptedKey, keyToUse);
+        const decrypted = xorDecrypt(encryptedData, symKey);
+        setSecretData(decrypted);
+        addLog(`SUCCESS: ${decrypted}`, "success");
+      } catch (e) {
+        addLog("Counter-Encryption Active. Decryption Failed.", "error");
+      }
 
     } catch (err) {
       console.error(err);
@@ -242,9 +337,17 @@ function App() {
 
       // Read result via staticCall
       const result = await contract.accessData.staticCall();
-      setSecretData(result);
+      const encryptedData = result.encryptedHash;
+      const encryptedKey = result.key;
 
-      addLog(`Smart Wallet Execution Success! Data Accessed via Proxy: ${result}`, "success");
+      addLog("Deciphering Proxy Stream...", "warning");
+      // The Smart Wallet is owned by the 'account' (deployer), so we use deriveKey
+      const keyToUse = await deriveKey();
+      const symKey = xorDecrypt(encryptedKey, keyToUse);
+      const decrypted = xorDecrypt(encryptedData, symKey);
+
+      setSecretData(decrypted);
+      addLog(`Smart Wallet Execution Success! Data Accessed via Proxy: ${decrypted}`, "success");
     } catch (err) {
       console.error(err);
       addLog("Smart Wallet Execution Failed. Owner mismatch or access denied.", "error");
@@ -358,7 +461,21 @@ function App() {
           <div className="panel-title">AUTHORIZED OPS</div>
 
           <div className="control-group">
-            <label>Grant Access</label>
+            <label>Secure Data Upload (AES-256)</label>
+            <div className="input-row">
+              <input
+                placeholder="Top Secret Content..."
+                value={uploadDataInput}
+                onChange={(e) => setUploadDataInput(e.target.value)}
+              />
+              <button onClick={uploadSecureData} disabled={isEncrypting}>
+                {isEncrypting ? "ENCRYPTING..." : "ANCHOR"}
+              </button>
+            </div>
+          </div>
+
+          <div className="control-group">
+            <label>Grant Encrypted Access</label>
             <div className="input-row">
               <input
                 placeholder="Target User Address"

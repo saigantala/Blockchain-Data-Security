@@ -16,10 +16,27 @@ async function main() {
     const smartWalletAddress = await smartWallet.getAddress();
     console.log("SmartWallet deployed to:", smartWalletAddress);
 
-    // Grant Access to Smart Wallet by default for the demo
-    const tx = await dataVault.grantAccess(smartWalletAddress);
+    // Initial Anchor: Secure dummy data
+    const dummyData = "INITIAL_SYSTEM_DATALINK_ESTABLISHED";
+    const dummySymKey = "sym-key-001";
+    const ownerDummyKey = hre.ethers.keccak256(hre.ethers.toUtf8Bytes(deployer.address));
+
+    // Simulate encryption
+    const xor = (text, key) => Buffer.from(text).map((c, i) => c ^ key.charCodeAt(i % key.length)).toString('base64');
+    const encryptedData = xor(dummyData, dummySymKey);
+    const encryptedSymKey = xor(dummySymKey, ownerDummyKey);
+
+    console.log("Anchoring Initial Secure Data...");
+    let tx = await dataVault.uploadData(encryptedData, encryptedSymKey);
     await tx.wait();
-    console.log(`Access granted to SmartWallet: ${smartWalletAddress}`);
+
+    // Grant Access to Smart Wallet with its own encrypted key
+    const swDummyKey = hre.ethers.keccak256(hre.ethers.toUtf8Bytes(smartWalletAddress));
+    const encryptedKeyForSW = xor(dummySymKey, swDummyKey);
+
+    console.log(`Granting Encrypted Access to SmartWallet: ${smartWalletAddress}`);
+    tx = await dataVault.grantAccess(smartWalletAddress, encryptedKeyForSW);
+    await tx.wait();
 
     // Save addresses for Frontend
     const fs = await import('fs');
