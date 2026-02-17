@@ -37,6 +37,11 @@ import {
   deriveKeyFromSignature,
   generateChecksum
 } from '@/lib/encryption';
+import {
+  generateProofOfPossession,
+  verifyZKProof,
+  type ZKProof
+} from '@/lib/zkp';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -51,6 +56,8 @@ export default function Dashboard() {
   const [logs, setLogs] = useState<{ msg: string; type: string; time: string }[]>([]);
   const [secretData, setSecretData] = useState("");
   const [integrityStatus, setIntegrityStatus] = useState<"VERIFIED" | "TAMPERED" | "UNKNOWN">("UNKNOWN");
+  const [zkStatus, setZkStatus] = useState<"UNVERIFIED" | "GENERATING" | "VERIFIED" | "FAILED">("UNVERIFIED");
+  const [zkProof, setZkProof] = useState<ZKProof | null>(null);
   const [uploadInput, setUploadInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [grantAddress, setGrantAddress] = useState("");
@@ -77,7 +84,7 @@ export default function Dashboard() {
     abi: DATA_VAULT_ABI,
     eventName: 'SecurityAlert',
     onLogs(logs) {
-      logs.forEach((log) => {
+      logs.forEach((log: any) => {
         const intruder = log.args.intruder;
         addLog(`🚨 SECURITY ALERT: Unauthorized access detected from ${intruder}`, "error");
         toast.error(`Security Alert: ${intruder}`, { duration: 5000 });
@@ -182,6 +189,36 @@ export default function Dashboard() {
       addLog("Decryption Denied.", "error");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleZKProof = async () => {
+    if (!secretData) {
+      toast.error("No data extracted to prove possession of.");
+      return;
+    }
+    setZkStatus("GENERATING");
+    addLog("Initiating ZK-Proof generation...", "warning");
+    try {
+      const proof = await generateProofOfPossession(secretData);
+
+      addLog("Generating Succinct Non-Interactive Argument...", "info");
+      setZkProof(proof);
+
+      addLog("Verifying Proof Locally (Private Integrity)...", "warning");
+      const isValid = verifyZKProof(proof, secretData);
+
+      if (isValid) {
+        setZkStatus("VERIFIED");
+        addLog("ZK-PROVED: Possession of data verified without exposure.", "success");
+        toast.success("ZK-Proof Verified!");
+      } else {
+        setZkStatus("FAILED");
+        addLog("ZK-ERROR: Proof-Witness mismatch.", "error");
+      }
+    } catch (e) {
+      setZkStatus("FAILED");
+      addLog("ZK-FAILURE: Cryptographic engine interruption.", "error");
     }
   };
 
@@ -387,6 +424,41 @@ export default function Dashboard() {
 
         {/* Right Col: Metadata & Security Log */}
         <div className="lg:col-span-1 space-y-6">
+          <section className="p-5 border border-zinc-800 rounded-xl bg-zinc-900/50">
+            <h2 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Shield size={14} className="text-purple-500" /> ZK-Privacy Engine
+            </h2>
+            <div className="space-y-4">
+              <div className="p-3 bg-black border border-zinc-800 rounded-lg">
+                <div className="text-[10px] text-zinc-600 uppercase mb-2">Proof of Possession (ZKP)</div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className={cn(
+                    "flex-1 py-1 px-2 rounded text-[9px] font-mono border",
+                    zkStatus === "VERIFIED" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
+                      zkStatus === "GENERATING" ? "bg-zinc-800 text-zinc-400 border-zinc-700 animate-pulse" :
+                        "bg-black text-zinc-600 border-zinc-800"
+                  )}>
+                    {zkStatus === "VERIFIED" ? `SNARK_SERIAL: ${zkProof?.proof.slice(0, 16)}...` :
+                      zkStatus === "GENERATING" ? "CALCULATING_WITNESS..." : "NO_PROOF_GENERATED"}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleZKProof}
+                disabled={!secretData || zkStatus === "GENERATING"}
+                className="w-full py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 text-purple-400 font-bold uppercase text-[10px] tracking-widest rounded transition-all disabled:opacity-20"
+              >
+                Generate Private ZK-Proof
+              </button>
+              {zkStatus === "VERIFIED" && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-green-500/5 border border-green-500/20 rounded">
+                  <Unlock size={12} className="text-green-500" />
+                  <span className="text-[9px] text-green-500 uppercase font-black">Proof Blind-Verified Locally</span>
+                </div>
+              )}
+            </div>
+          </section>
+
           <section className="p-5 border border-zinc-800 rounded-xl bg-zinc-900/50">
             <h2 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
               <AlertTriangle size={14} className="text-red-500" /> Risk Analysis
