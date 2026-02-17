@@ -8,10 +8,10 @@ const CONTRACT_ADDRESS = contractAddresses.DATA_VAULT;
 const SMART_WALLET_ADDRESS = contractAddresses.SMART_WALLET;
 
 const DATA_VAULT_ABI = [
-  "function uploadData(string calldata _encryptedHash, string calldata _ownerKey) external",
+  "function uploadData(string calldata _encryptedHash, string calldata _ownerKey, string calldata _checksum) external",
   "function grantAccess(address user, string calldata encryptedKey) external",
   "function revokeAccess(address user) external",
-  "function accessData() external returns (string memory encryptedHash, string memory key)",
+  "function accessData() external returns (string memory encryptedHash, string memory key, string memory checksum)",
   "function owner() external view returns (address)",
   "event SecurityAlert(address intruder, uint256 time)",
   "event DataUploaded(string encryptedHash)"
@@ -39,6 +39,7 @@ function App() {
   const [isEncrypting, setIsEncrypting] = useState(false);
   const [uploadDataInput, setUploadDataInput] = useState("");
   const [authorizedAddresses, setAuthorizedAddresses] = useState([]);
+  const [integrityStatus, setIntegrityStatus] = useState("UNKNOWN");
 
   useEffect(() => {
     connectWallet();
@@ -216,17 +217,20 @@ function App() {
       const masterKey = await deriveKey();
       const symmetricKey = Math.random().toString(36).substring(7);
 
+      addLog("Generating Data Integrity Checksum (SHA-256)...", "info");
+      const checksum = ethers.sha256(ethers.toUtf8Bytes(uploadDataInput));
+
       addLog("Encrypting Data with AES-256 (Simulated)...", "warning");
       const encryptedData = xorEncrypt(uploadDataInput, symmetricKey);
 
       addLog("Encrypting Symmetric Key for Owner...", "warning");
       const encryptedSymmetricKey = xorEncrypt(symmetricKey, masterKey);
 
-      addLog("Anchoring Encrypted Data to Blockchain...", "info");
-      const tx = await contract.uploadData(encryptedData, encryptedSymmetricKey);
+      addLog("Anchoring Encrypted Data & Integrity Checksum...", "info");
+      const tx = await contract.uploadData(encryptedData, encryptedSymmetricKey, checksum);
       await tx.wait();
 
-      addLog("Data Secured Successfully.", "success");
+      addLog("Data Secured & Anchored Successfully.", "success");
       setUploadDataInput("");
     } catch (e) {
       console.error(e);
@@ -301,6 +305,7 @@ function App() {
       const result = await contract.accessData.staticCall();
       const encryptedData = result.encryptedHash;
       const encryptedKey = result.key;
+      const expectedChecksum = result.checksum;
 
       if (!encryptedData || encryptedData === "ACCESS DENIED") {
         addLog("Data Access Refused. Not Authorized.", "error");
@@ -322,6 +327,18 @@ function App() {
       try {
         const symKey = xorDecrypt(encryptedKey, keyToUse);
         const decrypted = xorDecrypt(encryptedData, symKey);
+
+        addLog("Verifying Data Integrity...", "info");
+        const actualChecksum = ethers.sha256(ethers.toUtf8Bytes(decrypted));
+
+        if (actualChecksum === expectedChecksum) {
+          setIntegrityStatus("VERIFIED");
+          addLog("INTEGRITY CHECK PASSED: Data matches original anchor.", "success");
+        } else {
+          setIntegrityStatus("TAMPERED");
+          addLog("🚨 INTEGRITY ALERT: Decrypted data checksum mismatch!", "error");
+        }
+
         setSecretData(decrypted);
         addLog(`SUCCESS: ${decrypted}`, "success");
       } catch (e) {
@@ -357,12 +374,18 @@ function App() {
       const result = await contract.accessData.staticCall();
       const encryptedData = result.encryptedHash;
       const encryptedKey = result.key;
+      const expectedChecksum = result.checksum;
 
       addLog("Deciphering Proxy Stream...", "warning");
       // The Smart Wallet is owned by the 'account' (deployer), so we use deriveKey
       const keyToUse = await deriveKey();
       const symKey = xorDecrypt(encryptedKey, keyToUse);
       const decrypted = xorDecrypt(encryptedData, symKey);
+
+      addLog("Verifying Proxy Data Integrity...", "info");
+      const actualChecksum = ethers.sha256(ethers.toUtf8Bytes(decrypted));
+      if (actualChecksum === expectedChecksum) setIntegrityStatus("VERIFIED");
+      else setIntegrityStatus("TAMPERED");
 
       setSecretData(decrypted);
       addLog(`Smart Wallet Execution Success! Data Accessed via Proxy: ${decrypted}`, "success");
@@ -465,8 +488,11 @@ function App() {
 
         {secretData && (
           <div className="secret-data-display animate-flicker">
-            <div className="label">EXTRACTED_DATA_STREAM</div>
-            <div className="data-value">{secretData}</div>
+            <div className={`integrity-badge ${integrityStatus}`}>
+              INTEGRITY: {integrityStatus}
+            </div>
+            <div className="data-label">DECRYPTED STREAM:</div>
+            <div className="data-content">{secretData}</div>
           </div>
         )}
       </section>

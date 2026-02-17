@@ -21,13 +21,14 @@ async function main() {
     const dummySymKey = "sym-key-001";
     const ownerDummyKey = hre.ethers.keccak256(hre.ethers.toUtf8Bytes(deployer.address));
 
-    // Simulate encryption
+    // Simulate encryption and checksum
     const xor = (text, key) => Buffer.from(text).map((c, i) => c ^ key.charCodeAt(i % key.length)).toString('base64');
     const encryptedData = xor(dummyData, dummySymKey);
     const encryptedSymKey = xor(dummySymKey, ownerDummyKey);
+    const checksum = hre.ethers.sha256(hre.ethers.toUtf8Bytes(dummyData));
 
-    console.log("Anchoring Initial Secure Data...");
-    let tx = await dataVault.uploadData(encryptedData, encryptedSymKey);
+    console.log("Anchoring Initial Secure Data & Integrity Checksum...");
+    let tx = await dataVault.uploadData(encryptedData, encryptedSymKey, checksum);
     await tx.wait();
 
     // Grant Access to Smart Wallet with its own encrypted key
