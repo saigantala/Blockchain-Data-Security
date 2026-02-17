@@ -1,23 +1,18 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
-contract SmartWallet {
-    address public owner;
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract SmartWallet is Ownable {
+    error ExecutionFailed();
 
     event Execution(address indexed target, bytes data, uint256 value);
 
-    constructor(address _owner) {
-        owner = _owner;
-    }
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
-        _;
-    }
+    constructor(address _owner) Ownable(_owner) {}
 
     function execute(address _target, bytes calldata _data) external payable onlyOwner {
         (bool success, ) = _target.call{value: msg.value}(_data);
-        require(success, "Execution failed");
+        if (!success) revert ExecutionFailed();
         emit Execution(_target, _data, msg.value);
     }
 

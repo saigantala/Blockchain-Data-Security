@@ -1,26 +1,29 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
-contract DataVault {
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+contract DataVault is Ownable, ReentrancyGuard {
+    error NotAuthorized();
+
     mapping(address => bool) public authorizedUsers;
-    address public owner;
+    mapping(address => string) public userKeys; // Encrypted symmetric keys for users
     string private secretDataHash; // Encrypted IPFS hash
     string private dataChecksum; // SHA-256 of original data
 
     event SecurityAlert(address indexed intruder, uint256 time);
     event DataUploaded(string encryptedHash);
 
-    constructor() {
-        owner = msg.sender;
+    constructor() Ownable(msg.sender) {
         authorizedUsers[msg.sender] = true;
     }
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not the owner");
-        _;
-    }
-
-    function uploadData(string calldata _encryptedHash, string calldata _ownerKey, string calldata _checksum) external onlyOwner {
+    function uploadData(
+        string calldata _encryptedHash,
+        string calldata _ownerKey,
+        string calldata _checksum
+    ) external onlyOwner {
         secretDataHash = _encryptedHash;
         userKeys[msg.sender] = _ownerKey;
         dataChecksum = _checksum;
@@ -37,10 +40,10 @@ contract DataVault {
         delete userKeys[user]; // Clear the key for security
     }
 
-    function accessData() external returns (string memory encryptedHash, string memory key, string memory checksum) {
+    function accessData() external nonReentrant returns (string memory encryptedHash, string memory key, string memory checksum) {
         if (!authorizedUsers[msg.sender]) {
             emit SecurityAlert(msg.sender, block.timestamp);
-            return ("ACCESS DENIED", "", "");
+            revert NotAuthorized();
         }
         return (secretDataHash, userKeys[msg.sender], dataChecksum);
     }

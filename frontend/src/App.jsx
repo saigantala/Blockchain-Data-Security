@@ -295,22 +295,24 @@ function App() {
     if (!contract) return;
 
     try {
-      // 2. Simulate Authentication Process
-      addLog(`[AUTH] Verifying Identity for Wallet ID...`, "warning");
-      await new Promise(r => setTimeout(r, 1000)); // Fake processing delay
-      addLog(`[AUTH] Identity Verified via Wallet Address. Initiating Data Breach...`, "error");
+      addLog("Initializing Data Extraction Injection...", "warning");
 
-      // 3. Execute Blockchain Attack
-      // Use staticCall first to get the data
-      const result = await contract.accessData.staticCall();
+      let result;
+      try {
+        result = await contract.accessData.staticCall();
+      } catch (err) {
+        console.error("StaticCall Error:", err);
+        if (err.message.includes("NotAuthorized") || err.data?.includes("NotAuthorized")) {
+          addLog("ACCESS DENIED: Identity not authorized in block state.", "error");
+        } else {
+          addLog("System Interruption: Data stream unreachable.", "error");
+        }
+        return;
+      }
+
       const encryptedData = result.encryptedHash;
       const encryptedKey = result.key;
       const expectedChecksum = result.checksum;
-
-      if (!encryptedData || encryptedData === "ACCESS DENIED") {
-        addLog("Data Access Refused. Not Authorized.", "error");
-        return;
-      }
 
       const tx = await contract.accessData();
       addLog(`Injection Sent: ${tx.hash}`, "info");
@@ -362,16 +364,28 @@ function App() {
 
     try {
       addLog("Initiating Smart Wallet Proxy Call...", "info");
-      // Encode the function call to accessData
-      const iface = new ethers.Interface(DATA_VAULT_ABI);
-      const data = iface.encodeFunctionData("accessData", []);
+      const smartWalletContract = new ethers.Contract(SMART_WALLET_ADDRESS, [
+        "function execute(address target, bytes data) external payable",
+        "error ExecutionFailed()"
+      ], await provider.getSigner());
 
-      const tx = await smartWallet.execute(CONTRACT_ADDRESS, data);
+      const vaultAddress = await contract.getAddress();
+      const data = contract.interface.encodeFunctionData("accessData");
+
+      // Handle Proxy Execution
+      let result;
+      try {
+        result = await contract.accessData.staticCall();
+      } catch (err) {
+        addLog("Proxy Execution Blocked: Unauthorized Access.", "error");
+        return;
+      }
+
+      addLog("Relaying Data Extraction via Smart Wallet...", "warning");
+      const tx = await smartWalletContract.execute(vaultAddress, data);
       addLog(`Proxy Transaction Sent: ${tx.hash}`, "info");
       await tx.wait();
 
-      // Read result via staticCall
-      const result = await contract.accessData.staticCall();
       const encryptedData = result.encryptedHash;
       const encryptedKey = result.key;
       const expectedChecksum = result.checksum;
