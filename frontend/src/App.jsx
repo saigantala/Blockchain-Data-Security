@@ -10,6 +10,7 @@ const SMART_WALLET_ADDRESS = contractAddresses.SMART_WALLET;
 const DATA_VAULT_ABI = [
   "function uploadData(string calldata _encryptedHash, string calldata _ownerKey) external",
   "function grantAccess(address user, string calldata encryptedKey) external",
+  "function revokeAccess(address user) external",
   "function accessData() external returns (string memory encryptedHash, string memory key)",
   "function owner() external view returns (address)",
   "event SecurityAlert(address intruder, uint256 time)",
@@ -37,6 +38,7 @@ function App() {
   const [vaultOwner, setVaultOwner] = useState("");
   const [isEncrypting, setIsEncrypting] = useState(false);
   const [uploadDataInput, setUploadDataInput] = useState("");
+  const [authorizedAddresses, setAuthorizedAddresses] = useState([]);
 
   useEffect(() => {
     connectWallet();
@@ -261,11 +263,27 @@ function App() {
       const tx = await contract.grantAccess(targetAddress, encryptedKeyForTarget);
       addLog(`Transaction Pending: ${tx.hash}`, "info");
       await tx.wait();
+      setAuthorizedAddresses(prev => [...new Set([...prev, targetAddress])]);
       addLog(`ACCESS GRANTED: ${targetAddress}`, "success");
       setTargetAddress("");
     } catch (err) {
       console.error(err);
       addLog("Authorization Failed. Ensure the Hardhat node is running and you are the owner.", "error");
+    }
+  };
+
+  const revokeAccess = async (target) => {
+    if (!contract) return;
+    try {
+      addLog(`Initiating Revoke Protocol for ${target}...`, "warning");
+      const tx = await contract.revokeAccess(target);
+      addLog(`Transaction Pending: ${tx.hash}`, "info");
+      await tx.wait();
+      addLog(`ACCESS REVOKED: ${target}`, "success");
+      setAuthorizedAddresses(prev => prev.filter(a => a.toLowerCase() !== target.toLowerCase()));
+    } catch (err) {
+      console.error(err);
+      addLog("Revocation Failed.", "error");
     }
   };
 
@@ -485,6 +503,20 @@ function App() {
               <button onClick={grantAccess}>AUTHORIZE</button>
             </div>
           </div>
+
+          {authorizedAddresses.length > 0 && (
+            <div className="control-group">
+              <label>Revoke Access Management</label>
+              <div className="authorized-list">
+                {authorizedAddresses.map(addr => (
+                  <div key={addr} className="user-row">
+                    <span>{addr.substring(0, 16)}...</span>
+                    <button className="revoke-btn" onClick={() => revokeAccess(addr)}>REVOKE</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="control-group">
             <label>Smart Wallet Proxy</label>

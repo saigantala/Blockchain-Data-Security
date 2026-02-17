@@ -31,6 +31,11 @@ contract DataVault {
         userKeys[user] = encryptedKey;
     }
 
+    function revokeAccess(address user) external onlyOwner {
+        authorizedUsers[user] = false;
+        delete userKeys[user]; // Clear the key for security
+    }
+
     function accessData() external returns (string memory encryptedHash, string memory key) {
         if (!authorizedUsers[msg.sender]) {
             emit SecurityAlert(msg.sender, block.timestamp);
