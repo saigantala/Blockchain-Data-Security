@@ -344,3 +344,100 @@
 .log-line.success {
   color: var(--success);
 }
+
+/* --- Secret Data Display --- */
+.secret-data-display {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: rgba(0, 255, 157, 0.05);
+  border: 1px solid var(--success);
+  border-radius: 8px;
+  text-align: center;
+  width: 100%;
+  max-width: 400px;
+  position: relative;
+  box-shadow: 0 0 15px rgba(0, 255, 157, 0.2);
+}
+
+.secret-data-display .label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--success);
+  letter-spacing: 2px;
+  margin-bottom: 0.5rem;
+}
+
+.secret-data-display .data-value {
+  font-family: var(--font-mono);
+  font-size: 1.2rem;
+  color: var(--text-main);
+  word-break: break-all;
+  font-weight: 700;
+}
+
+.animate-flicker {
+  animation: flicker 0.5s ease-in-out;
+}
+
+@keyframes flicker {
+  0% {
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 0.5;
+  }
+
+  20% {
+    opacity: 0.2;
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  40% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.8;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes blink-red {
+  from {
+    box-shadow: 0 0 5px var(--danger);
+  }
+
+  to {
+    box-shadow: 0 0 20px var(--danger);
+  }
+}
+
+/* --- Node Status & Owner Badge --- */
+.node-status.ONLINE {
+  color: var(--success);
+}
+
+.node-status.OFFLINE {
+  color: var(--danger);
+  animation: blink-red 1s infinite alternate;
+}
+
+.owner-badge {
+  display: inline-block;
+  background: var(--primary);
+  color: #000;
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-top: 5px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  box-shadow: var(--neon-shadow);
+}

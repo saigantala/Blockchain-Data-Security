@@ -29,16 +29,22 @@ function App() {
   const [systemStatus, setSystemStatus] = useState("ONLINE");
   const terminalEndRef = useRef(null);
   const [provider, setProvider] = useState(null);
+  const [secretData, setSecretData] = useState("");
+  const [nodeStatus, setNodeStatus] = useState("UNKNOWN");
+  const [vaultOwner, setVaultOwner] = useState("");
 
   useEffect(() => {
     connectWallet();
+    checkNodeConnection();
     if (window.ethereum) {
       window.ethereum.on('accountsChanged', connectWallet);
     }
+    const interval = setInterval(checkNodeConnection, 5000); // Check node every 5s
     return () => {
       if (window.ethereum) {
         window.ethereum.removeListener('accountsChanged', connectWallet);
       }
+      clearInterval(interval);
     }
   }, []);
 
@@ -53,7 +59,25 @@ function App() {
   };
 
   const isValidAddress = (addr) => {
+    if (addr.length === 64 || (addr.startsWith("0x") && addr.length === 66)) {
+      addLog(`ERROR: Detected PRIVATE KEY format. Please enter a WALLET ADDRESS (starts with 0x, ~42 chars).`, "error");
+      return false;
+    }
     return ethers.isAddress(addr);
+  };
+
+  const checkNodeConnection = async () => {
+    try {
+      const resp = await fetch("http://localhost:8545", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 1 })
+      });
+      if (resp.ok) setNodeStatus("ONLINE");
+      else setNodeStatus("OFFLINE");
+    } catch (e) {
+      setNodeStatus("OFFLINE");
+    }
   };
 
   const [isSimulated, setIsSimulated] = useState(false);
@@ -126,10 +150,12 @@ function App() {
     const sw = new ethers.Contract(SMART_WALLET_ADDRESS, SMART_WALLET_ABI, signer);
     setSmartWallet(sw);
 
-    // Fetch Smart Wallet Owner
+    // Fetch Owners
     try {
       const owner = await sw.owner();
       setSmartWalletOwner(owner);
+      const vOwner = await dataVault.owner();
+      setVaultOwner(vOwner);
     } catch (e) { /* ignore */ }
 
     // Setup Listener (Only needed once, but re-attaching is fine for this demo)
@@ -151,6 +177,11 @@ function App() {
     }
 
     try {
+      if (vaultOwner && account.toLowerCase() !== vaultOwner.toLowerCase()) {
+        addLog(`DENIED: Only the DataVault Owner (${vaultOwner.substring(0, 8)}...) can grant access.`, "error");
+        return;
+      }
+
       addLog(`Initiating Grant Access Protocol for ${targetAddress}...`, "info");
       const tx = await contract.grantAccess(targetAddress);
       addLog(`Transaction Pending: ${tx.hash}`, "info");
@@ -159,7 +190,7 @@ function App() {
       setTargetAddress("");
     } catch (err) {
       console.error(err);
-      addLog("Authorization Failed. Check permissions.", "error");
+      addLog("Authorization Failed. Ensure the Hardhat node is running and you are the owner.", "error");
     }
   };
 
@@ -173,14 +204,20 @@ function App() {
       addLog(`[AUTH] Identity Verified via Wallet Address. Initiating Data Breach...`, "error");
 
       // 3. Execute Blockchain Attack
+      // Use staticCall first to get the data (since accessData is not a view function)
+      const data = await contract.accessData.staticCall();
+
       const tx = await contract.accessData();
       addLog(`Injection Sent: ${tx.hash}`, "info");
       await tx.wait();
-      addLog("Transaction Confirmed. Awaiting Response...", "info");
+
+      setSecretData(data);
+      addLog(`DATA EXTRACTED: ${data}`, "success");
+      addLog("Transaction Confirmed. System Compromised.", "info");
 
     } catch (err) {
       console.error(err);
-      addLog("Operation Failed.", "error");
+      addLog("Operation Failed. Access Denied or Security Triggered.", "error");
     }
   };
 
@@ -202,10 +239,15 @@ function App() {
       const tx = await smartWallet.execute(CONTRACT_ADDRESS, data);
       addLog(`Proxy Transaction Sent: ${tx.hash}`, "info");
       await tx.wait();
-      addLog("Smart Wallet Execution Success! Data Accessed via Proxy.", "success");
+
+      // Read result via staticCall
+      const result = await contract.accessData.staticCall();
+      setSecretData(result);
+
+      addLog(`Smart Wallet Execution Success! Data Accessed via Proxy: ${result}`, "success");
     } catch (err) {
       console.error(err);
-      addLog("Smart Wallet Execution Failed.", "error");
+      addLog("Smart Wallet Execution Failed. Owner mismatch or access denied.", "error");
     }
   };
 
@@ -242,6 +284,7 @@ function App() {
   };
 
   const resetConnection = () => {
+    setSecretData("");
     connectWallet(); // Revert to Metamask
   };
 
@@ -262,6 +305,9 @@ function App() {
           <div className="metric">
             NET: {isSimulated ? "SIMULATED (HARDHAT)" : "LOCALHOST"}
           </div>
+          <div className={`metric node-status ${nodeStatus}`}>
+            HARDHAT_NODE: {nodeStatus}
+          </div>
         </div>
       </header>
 
@@ -273,6 +319,9 @@ function App() {
             <div className="current-id">
               <span className="id-label">{isSimulated ? "UNAUTHORIZED SIMULATION" : "VERIFIED USER"}</span>
               <span className="id-address">{account}</span>
+              {vaultOwner && vaultOwner.toLowerCase() === account.toLowerCase() && (
+                <span className="owner-badge">SYSTEM OWNER</span>
+              )}
             </div>
           ) : (
             <button className="connect-btn" onClick={connectWallet}>INITIALIZE UPLINK</button>
@@ -292,6 +341,13 @@ function App() {
           </div>
           {isSimulated && <button className="reset-btn" onClick={resetConnection}>RESET CONNECTION</button>}
         </div>
+
+        {secretData && (
+          <div className="secret-data-display animate-flicker">
+            <div className="label">EXTRACTED_DATA_STREAM</div>
+            <div className="data-value">{secretData}</div>
+          </div>
+        )}
       </section>
 
       {/* 3. Operations Grid */}

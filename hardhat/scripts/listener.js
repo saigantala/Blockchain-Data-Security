@@ -10,10 +10,20 @@ async function main() {
     // I will make this script accept an address arg or just hardcode it after deployment. 
     // Let's use an environment variable or command line argument for flexibility.
 
-    const address = process.env.CONTRACT_ADDRESS;
+    let address = process.env.CONTRACT_ADDRESS;
+
+    // Auto-sync: If no env var, try to read from frontend's contract-addresses.json
     if (!address) {
-        console.error("Please set CONTRACT_ADDRESS env variable");
-        return;
+        try {
+            const fs = await import('fs');
+            const path = await import('path');
+            const addressPath = path.join(process.cwd(), "../frontend/src/contract-addresses.json");
+            const data = fs.readFileSync(addressPath, 'utf8');
+            address = JSON.parse(data).DATA_VAULT;
+        } catch (e) {
+            console.error("Could not auto-find contract address. Please set CONTRACT_ADDRESS env variable.");
+            return;
+        }
     }
 
     const DataVault = await hre.ethers.getContractFactory("DataVault");
